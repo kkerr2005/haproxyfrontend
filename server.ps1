@@ -1,6 +1,6 @@
 Import-Module Pode
 Import-Module Pode.Web
-Import-Module "$PSScriptRoot\HaproxyUtils.psm1"
+$HaproxyUtilsPath = "$PSScriptRoot\HaproxyUtils.psm1"
 
 Start-PodeServer {
     # Add a web server on port 8080
@@ -14,6 +14,7 @@ Start-PodeServer {
 
     # Add the navigation pages
     Add-PodeWebPage -Name 'Dashboard' -Icon 'dashboard' -ScriptBlock {
+        Import-Module $using:HaproxyUtilsPath
         $config = Get-HaproxyConfig
         $configStatus = Test-HaproxyConfig
 
@@ -24,6 +25,7 @@ Start-PodeServer {
     }
 
     Add-PodeWebPage -Name 'Configuration' -Icon 'settings' -ScriptBlock {
+        Import-Module $using:HaproxyUtilsPath
         New-PodeWebForm -Name 'haproxy-config' -Content @(
             New-PodeWebTextbox -Name 'Frontend' -Label 'Frontend Name' -Required
             New-PodeWebSelect -Name 'Mode' -Label 'Mode' -Options @('http', 'tcp') -Required
@@ -32,6 +34,7 @@ Start-PodeServer {
             New-PodeWebTextbox -Name 'BackendServers' -Label 'Backend Servers (comma-separated)' -Required -PlaceHolder 'server1:port,server2:port'
         ) -ScriptBlock {
             param($Frontend, $Mode, $Port, $Backend, $BackendServers)
+            Import-Module $using:HaproxyUtilsPath
             
             try {
                 $servers = $BackendServers -split ',' | ForEach-Object { $_.Trim() }
