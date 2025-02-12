@@ -3,9 +3,6 @@ Import-Module Pode.Web
 $HaproxyUtilsPath = "$PSScriptRoot\HaproxyUtils.psm1"
 
 Start-PodeServer {
-    # Enable logging
-    New-PodeLoggingMethod -Terminal | Enable-PodeErrorLogging
-
     # Add a web server on port 8080
     Add-PodeEndpoint -Address * -Port 8080 -Protocol Http
     
@@ -15,10 +12,12 @@ Start-PodeServer {
     # Set the use of Pode.Web
     Use-PodeWebtemplates -Title 'HAProxy Management' -Theme Dark
 
+    # Import the module at server startup
+    Import-Module $HaproxyUtilsPath
+
     # Add the navigation pages
     Add-PodeWebPage -Name 'Dashboard' -Icon 'dashboard' -ScriptBlock {
         try {
-            Import-Module $using:HaproxyUtilsPath -ErrorAction Stop
             $config = Get-HaproxyConfig
             $configStatus = Test-HaproxyConfig
 
@@ -36,8 +35,6 @@ Start-PodeServer {
 
     Add-PodeWebPage -Name 'Configuration' -Icon 'settings' -ScriptBlock {
         try {
-            Import-Module $using:HaproxyUtilsPath -ErrorAction Stop
-            
             New-PodeWebForm -Name 'haproxy-config' -Content @(
                 New-PodeWebTextbox -Name 'Frontend' -Label 'Frontend Name' -Required
                 New-PodeWebSelect -Name 'Mode' -Label 'Mode' -Options @('http', 'tcp') -Required
@@ -48,7 +45,6 @@ Start-PodeServer {
                 param($Frontend, $Mode, $Port, $Backend, $BackendServers)
                 
                 try {
-                    Import-Module $using:HaproxyUtilsPath -ErrorAction Stop
                     $servers = $BackendServers -split ',' | ForEach-Object { $_.Trim() }
                     
                     # Check if we have permission to write to config
