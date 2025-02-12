@@ -10,7 +10,7 @@ Start-PodeServer {
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
     # Set the use of Pode.Web
-    Use-PodeWeb -Title 'HAProxy Management' -Theme Dark
+    Use-PodeWebTemplates -Title 'HAProxy Management' -Theme Dark
 
     # Import the module at server startup
     Import-Module $HaproxyUtilsPath
@@ -25,6 +25,9 @@ Start-PodeServer {
                 New-PodeWebCard -Content @(
                     New-PodeWebAlert -Type Info -Value 'Welcome to HAProxy Management Interface'
                     New-PodeWebAlert -Type $(if ($configStatus) { 'Success' } else { 'Error' }) -Value "HAProxy Configuration Status: $(if ($configStatus) { 'Valid' } else { 'Invalid' })"
+                ),
+                New-PodeWebCard -Title 'Current Configuration' -Content @(
+                    New-PodeWebCodeBlock -Value $config -Language 'plaintext'
                 )
             )
         }
