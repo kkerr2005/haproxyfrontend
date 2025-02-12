@@ -13,16 +13,7 @@ Start-PodeServer {
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
     # Set the use of Pode.Web
-    Use-PodeWebTemplates -Title 'HAProxy Management' -Theme Dark
-
-    # Add error page
-    Add-PodeErrorPage -StatusCode 500 -ScriptBlock {
-        Write-PodeErrorLog -Message $_.Exception.Message
-        return @{
-            'Message' = $_.Exception.Message
-            'StackTrace' = $_.Exception.StackTrace
-        }
-    }
+    Use-PodeWeb -Title 'HAProxy Management' -Theme Dark
 
     # Add the navigation pages
     Add-PodeWebPage -Name 'Dashboard' -Icon 'dashboard' -ScriptBlock {
@@ -37,7 +28,7 @@ Start-PodeServer {
             )
         }
         catch {
-            Write-PodeErrorLog -Exception $_.Exception
+            Write-PodeLog -Message $_.Exception.Message -Level Error
             New-PodeWebCard -Content @(
                 New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
             )
@@ -84,7 +75,7 @@ Start-PodeServer {
                     }
                 }
                 catch {
-                    Write-PodeErrorLog -Exception $_.Exception
+                    Write-PodeLog -Message $_.Exception.Message -Level Error
                     Show-PodeWebToast -Message "Error: $($_.Exception.Message)" -Type Error
                 }
             }
@@ -94,7 +85,7 @@ Start-PodeServer {
             )
         }
         catch {
-            Write-PodeErrorLog -Exception $_.Exception
+            Write-PodeLog -Message $_.Exception.Message -Level Error
             New-PodeWebCard -Content @(
                 New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
             )
