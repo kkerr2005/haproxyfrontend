@@ -13,6 +13,9 @@ function Set-HaproxyConfig {
         [string]$Frontend,
         [string]$Backend,
         [string[]]$BackendServers,
+        [ValidateSet('http', 'tcp')]
+        [string]$Mode = 'http',
+        [int]$Port = 80,
         [string]$ConfigPath = '/etc/haproxy/haproxy.cfg'
     )
     
@@ -30,8 +33,8 @@ global
     
 defaults
     log     global
-    mode    http
-    option  httplog
+    mode    $Mode
+    option  ${Mode}log
     option  dontlognull
     retries 3
     timeout connect 5000
@@ -39,10 +42,12 @@ defaults
     timeout server  50000
 
 frontend $Frontend
-    bind *:80
+    bind *:$Port
+    mode $Mode
     default_backend $Backend
 
 backend $Backend
+    mode $Mode
 "@
 
     foreach ($server in $BackendServers) {
