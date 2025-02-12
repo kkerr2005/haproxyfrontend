@@ -10,7 +10,7 @@ Start-PodeServer {
     Enable-PodeSessionMiddleware -Duration 120 -Extend
 
     # Set the use of Pode.Web
-    Use-PodeWeb -Title 'HAProxy Management' -Theme Dark
+    Use-PodeWebTemplate -Title 'HAProxy Management' -Theme Dark
 
     # Add the navigation pages
     Add-PodeWebPage -Name 'Dashboard' -Icon 'dashboard' -ScriptBlock {
