@@ -28,7 +28,6 @@ Start-PodeServer {
             )
         }
         catch {
-            Write-PodeLog -Message $_.Exception.Message -Level Error
             New-PodeWebCard -Content @(
                 New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
             )
@@ -75,7 +74,6 @@ Start-PodeServer {
                     }
                 }
                 catch {
-                    Write-PodeLog -Message $_.Exception.Message -Level Error
                     Show-PodeWebToast -Message "Error: $($_.Exception.Message)" -Type Error
                 }
             }
@@ -85,7 +83,6 @@ Start-PodeServer {
             )
         }
         catch {
-            Write-PodeLog -Message $_.Exception.Message -Level Error
             New-PodeWebCard -Content @(
                 New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
             )
