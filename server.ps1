@@ -170,7 +170,7 @@ Start-PodeServer {
                     }
                 } -Content @(
                     New-PodeWebTextbox -Name 'Frontend' -Type Text -DisplayName 'Frontend Name' -Required -PlaceHolder 'e.g., web_frontend',
-                    New-PodeWebSelect -Name 'Mode' -DisplayName 'Mode' -Options @('http', 'tcp') -Required,
+                    New-PodeWebSelect -Name 'Mode' -DisplayName 'Mode' -Options @('http', 'tcp') -Required
                     New-PodeWebTextbox -Name 'Port' -Type Number -DisplayName 'Frontend Port' -Required -PlaceHolder '80',
                     New-PodeWebTextbox -Name 'Backend' -Type Text -DisplayName 'Backend Name' -Required -PlaceHolder 'e.g., web_backend',
                     New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Required -PlaceHolder 'server1:8080,server2:8080'
