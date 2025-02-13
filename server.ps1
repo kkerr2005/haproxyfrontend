@@ -11,12 +11,12 @@ function Show-UserMessage {
     
     try {
         Write-Host "Showing message: $Message (Type: $Type)"
-        Show-PodeWebAlert -Type $Type -Value $Message
+        New-PodeWebAlert -Type $Type -Value $Message
     }
     catch {
         Write-Host "Failed to show message: $($_.Exception.Message)"
         # Fallback to basic alert if something goes wrong
-        Show-PodeWebAlert -Type Error -Value $Message
+        New-PodeWebAlert -Type Error -Value $Message
     }
 }
 
