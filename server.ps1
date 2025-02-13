@@ -1,11 +1,44 @@
-Import-Module Pode
-Import-Module Pode.Web
+Import-Module Pode -Force
+Import-Module Pode.Web -Force
 $HaproxyUtilsPath = "$PSScriptRoot/HaproxyUtils.psm1"
+
+# Helper function to show consistent alerts
+function Show-UserMessage {
+    param(
+        [string]$Message,
+        [string]$Type = 'Info'
+    )
+    
+    try {
+        Write-Host "Showing message: $Message (Type: $Type)"
+        Show-PodeWebAlert -Type $Type -Value $Message
+    }
+    catch {
+        Write-Host "Failed to show message: $($_.Exception.Message)"
+        # Fallback to basic alert if something goes wrong
+        Show-PodeWebAlert -Type Error -Value $Message
+    }
+}
 
 Write-Host "Starting HAProxy Web Frontend"
 Write-Host "Loading from: $HaproxyUtilsPath"
 
 Start-PodeServer {
+    # Check HAProxy installation first
+    try {
+        $haproxyBinary = & sudo which haproxy 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: HAProxy is not installed or not accessible"
+            Write-Host "Please run install.sh first to set up the prerequisites"
+            throw "HAProxy not found. Please install HAProxy first."
+        }
+        Write-Host "Found HAProxy at: $haproxyBinary"
+    }
+    catch {
+        Write-Host "Error checking HAProxy installation: $($_.Exception.Message)"
+        throw "Failed to verify HAProxy installation. Error: $($_.Exception.Message)"
+    }
+
     # Add a web server on port 8080
     Add-PodeEndpoint -Address * -Port 8080 -Protocol Http
     Write-Host "Added endpoint: http://*:8080"
@@ -20,7 +53,7 @@ Start-PodeServer {
 
     # Import the module at server startup
     Write-Host "Importing HaproxyUtils module"
-    Import-Module $HaproxyUtilsPath
+    Import-Module $HaproxyUtilsPath -Force
     Write-Host "Module imported successfully"
 
     # Add the navigation pages
@@ -29,8 +62,7 @@ Start-PodeServer {
         try {
             Write-Host "Getting HAProxy config"
             $config = Get-HaproxyConfig -Simple
-            Write-Host "Config retrieved:"
-            Write-Host $config
+            Write-Host "Config retrieved"
             
             Write-Host "Testing config"
             $configResult = Test-HaproxyConfig
@@ -48,7 +80,7 @@ Start-PodeServer {
                     New-PodeWebAlert -Type $(if ($configResult) { 'Success' } else { 'Error' }) -Value "HAProxy Configuration Status: $(if ($configResult) { 'Valid' } else { 'Invalid' })"
                     New-PodeWebAlert -Type $(if ($isRunning) { 'Success' } else { 'Warning' }) -Value "HAProxy Service Status: $serviceStatus"
                 )
-                New-PodeWebCard -DisplayName 'Active Configuration' -Content @(
+                New-PodeWebCard -Title 'Active Configuration' -Content @(
                     New-PodeWebText -Value $config
                 )
             )
@@ -67,12 +99,6 @@ Start-PodeServer {
     Add-PodeWebPage -Name 'Configuration' -Icon 'settings' -ScriptBlock {
         Write-Host "Loading Configuration page"
         try {
-            # Check if HAProxy is installed and available
-            $haproxyCheck = & sudo which haproxy 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                throw "HAProxy is not installed or not accessible. Please ensure HAProxy is properly installed."
-            }
-
             Write-Host "Building configuration form"
             New-PodeWebContainer -NoBackground -Content @(
                 New-PodeWebForm -Name 'haproxy-config' -ScriptBlock {
@@ -101,7 +127,7 @@ Start-PodeServer {
                         if ($missingFields.Count -gt 0) {
                             $errorMsg = "Missing required fields: $($missingFields -join ', ')"
                             Write-Host "Validation Error: $errorMsg"
-                            Out-PodeWebToast -Message $errorMsg -Type Warning -Duration 5
+                            Show-UserMessage -Message $errorMsg -Type Warning
                             return
                         }
 
@@ -109,16 +135,14 @@ Start-PodeServer {
                         $portNumber = 0
                         if (-not [int]::TryParse($Port, [ref]$portNumber)) {
                             Write-Host "Invalid port number format"
-                            Out-PodeWebToast -Message "Port must be a valid number" -Type Warning -Duration 5
+                            Show-UserMessage -Message "Port must be a valid number" -Type Warning
                             return
                         }
-
-                        Write-Host "All fields provided, proceeding with validation..."
                         
                         # Validate port range
                         if ($portNumber -lt 1 -or $portNumber -gt 65535) {
                             Write-Host "Port number out of range: $portNumber"
-                            Out-PodeWebToast -Message "Port must be between 1 and 65535" -Type Warning -Duration 5
+                            Show-UserMessage -Message "Port must be between 1 and 65535" -Type Warning
                             return
                         }
 
@@ -128,20 +152,20 @@ Start-PodeServer {
                         
                         if ($servers.Count -eq 0) {
                             Write-Host "No valid backend servers found"
-                            Out-PodeWebToast -Message "Please provide at least one backend server in the format hostname:port" -Type Warning -Duration 5
+                            Show-UserMessage -Message "Please provide at least one backend server in the format hostname:port" -Type Warning
                             return
                         }
 
                         foreach ($server in $servers) {
                             if (-not ($server -match '^[^:]+:\d+$')) {
                                 Write-Host "Invalid server format: $server"
-                                Out-PodeWebToast -Message "Invalid server format: $server. Must be hostname:port" -Type Warning -Duration 5
+                                Show-UserMessage -Message "Invalid server format: $server. Must be hostname:port" -Type Warning
                                 return
                             }
                             $serverPort = [int]($server -split ':')[1]
                             if ($serverPort -lt 1 -or $serverPort -gt 65535) {
                                 Write-Host "Invalid server port: $serverPort"
-                                Out-PodeWebToast -Message "Invalid port in server $server. Port must be between 1 and 65535" -Type Warning -Duration 5
+                                Show-UserMessage -Message "Invalid port in server $server. Port must be between 1 and 65535" -Type Warning
                                 return
                             }
                         }
@@ -165,43 +189,42 @@ Start-PodeServer {
 
                             if ($restartSuccess) {
                                 Write-Host "HAProxy restarted successfully"
-                                Out-PodeWebToast -Message "Configuration saved and HAProxy restarted successfully!" -Duration 5 -Type Success
+                                Show-UserMessage -Message "Configuration saved and HAProxy restarted successfully!" -Type Success
                                 
                                 # Verify service is actually running after restart
                                 $serviceStatus = & sudo systemctl is-active haproxy 2>&1
                                 if ($LASTEXITCODE -ne 0) {
-                                    Out-PodeWebToast -Message "Warning: HAProxy service is not running after restart. Status: $serviceStatus" -Duration 5 -Type Warning
+                                    Show-UserMessage -Message "Warning: HAProxy service is not running after restart. Status: $serviceStatus" -Type Warning
                                 }
                                 
                                 Move-PodeWebUrl -Url "/dashboard"
                             }
                             else {
                                 Write-Host "HAProxy restart failed: $restartResult"
-                                Out-PodeWebToast -Message "Configuration saved but failed to restart HAProxy: $restartResult" -Duration 5 -Type Warning
+                                Show-UserMessage -Message "Configuration saved but failed to restart HAProxy: $restartResult" -Type Warning
                             }
                         }
                         else {
                             Write-Host "Config test failed"
-                            Out-PodeWebToast -Message "HAProxy configuration test failed. Please check the configuration." -Duration 5 -Type Error
+                            Show-UserMessage -Message "HAProxy configuration test failed. Please check the configuration." -Type Error
                             return
                         }
                     }
                     catch {
                         Write-Host "Error during configuration: $($_.Exception.Message)"
                         Write-Host "Stack trace: $($_.ScriptStackTrace)"
-                        Out-PodeWebToast -Message "Configuration Error: $($_.Exception.Message)" -Duration 5 -Type Error
-                        Show-PodeWebError -Message $_.Exception.Message
+                        Show-UserMessage -Message "Configuration Error: $($_.Exception.Message)" -Type Error
                     }
                 } -Content @(
-                    New-PodeWebTextbox -Name 'Frontend' -Type Text -DisplayName 'Frontend Name' -Required -Placeholder 'e.g., web_frontend'
+                    New-PodeWebTextbox -Name 'Frontend' -Type Text -DisplayName 'Frontend Name' -Required
                     New-PodeWebSelect -Name 'Mode' -DisplayName 'Mode' -Options @('http', 'tcp') -Required
-                    New-PodeWebTextbox -Name 'Port' -Type Number -DisplayName 'Frontend Port' -Required -Placeholder '80'
-                    New-PodeWebTextbox -Name 'Backend' -Type Text -DisplayName 'Backend Name' -Required -Placeholder 'e.g., web_backend'
-                    New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Required -Placeholder 'server1:8080,server2:8080'
-                ) -Submit 'Save Configuration' -AsCard
+                    New-PodeWebTextbox -Name 'Port' -Type Number -DisplayName 'Frontend Port' -Required
+                    New-PodeWebTextbox -Name 'Backend' -Type Text -DisplayName 'Backend Name' -Required
+                    New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Required
+                ) -Submit 'Save Configuration'
 
-                New-PodeWebCard -DisplayName 'Current Configuration' -Content @(
-                    New-PodeWebCode -Value (Get-HaproxyConfig)
+                New-PodeWebCard -Title 'Current Configuration' -Content @(
+                    New-PodeWebText -Value (Get-HaproxyConfig)
                 )
             )
         }
@@ -215,6 +238,4 @@ Start-PodeServer {
             )
         }
     }
-
-    Write-Host "Server configuration complete"
 }

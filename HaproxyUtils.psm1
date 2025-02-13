@@ -212,49 +212,34 @@ function Test-HaproxyConfig {
     
     try {
         Write-Host "Testing HAProxy config at: $ConfigPath"
-        # First verify the file exists and has content
         if (-not (Test-Path $ConfigPath)) {
             Write-Host "Config file not found at: $ConfigPath"
             return $false
         }
 
-        $fileContent = & sudo cat $ConfigPath 2>&1
-        if (-not $fileContent) {
-            Write-Host "Config file is empty"
-            return $false
-        }
-
-        Write-Host "Config file content verification:"
-        Write-Host "File exists and has content"
-
-        # Now test the configuration
         Write-Host "Running HAProxy config test..."
-        $result = & sudo haproxy -c -f $ConfigPath 2>&1
-        Write-Host "Test result exit code: $LASTEXITCODE"
-        Write-Host "Full test output:"
-        $result | ForEach-Object { Write-Host "  $_" }
+        # Capture output and error streams separately
+        $output = & sudo haproxy -c -f $ConfigPath 2>&1
+        $exitCode = $LASTEXITCODE
         
-        if ($LASTEXITCODE -ne 0) {
-            # Extract meaningful error message from HAProxy output
-            $errorMessage = $result | Where-Object { $_ -match '^\[ALERT\]' } | ForEach-Object { 
-                $_ -replace '^\[ALERT\]\s+\(\d+\)\s*:\s*', ''
-            }
-            
-            if ($errorMessage) {
-                Write-Error "HAProxy configuration error: $($errorMessage -join '; ')"
-            }
-            else {
-                Write-Error "HAProxy configuration test failed with no specific error message"
-            }
-            return $false
+        Write-Host "Test result exit code: $exitCode"
+        Write-Host "Full test output:"
+        if ($output -is [array]) {
+            $output | ForEach-Object { Write-Host "  $_" }
+        } else {
+            Write-Host "  $output"
         }
         
-        Write-Host "Configuration test passed successfully"
-        return $true
+        if ($exitCode -eq 0) {
+            Write-Host "Configuration test passed"
+            return $true
+        } else {
+            Write-Host "Configuration test failed"
+            return $false
+        }
     }
     catch {
         Write-Host "Exception testing config: $($_.Exception.Message)"
-        Write-Error $_.Exception.Message
         return $false
     }
 }
