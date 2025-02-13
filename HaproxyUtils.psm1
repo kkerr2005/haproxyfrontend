@@ -16,32 +16,38 @@ function Get-HaproxyConfig {
                 $summary = "`n═══════════════════════════════════════`n"
                 $summary += "      HAProxy Active Configuration      `n"
                 $summary += "═══════════════════════════════════════`n`n"
+                
                 $currentSection = $null
-                $frontendFound = $false
-                $backendFound = $false
+                $currentMode = "http"
                 
                 foreach ($line in $configLines) {
                     $line = $line.Trim()
-                    if ($line -match '^frontend\s+(\S+)') {
-                        $frontendFound = $true
-                        $currentSection = "frontend"
-                        $summary += "► FRONTEND: $($matches[1])`n"
+                    
+                    # Get mode from defaults section
+                    if ($line -match '^\s*mode\s+(\S+)' -and $currentSection -eq "defaults") {
+                        $currentMode = $matches[1]
                     }
-                    elseif ($line -match '^backend\s+(\S+)') {
-                        $backendFound = $true
-                        $currentSection = "backend"
-                        $summary += "`n► BACKEND: $($matches[1])`n"
+                    # Track current section
+                    elseif ($line -match '^(global|defaults|frontend|backend)\s*(\S*)') {
+                        $currentSection = $matches[1]
+                        if ($matches[2]) {
+                            if ($currentSection -eq "frontend") {
+                                $summary += "`n► FRONTEND: $($matches[2])`n"
+                                $summary += "   Mode: $currentMode`n"
+                            }
+                            elseif ($currentSection -eq "backend") {
+                                $summary += "`n► BACKEND: $($matches[2])`n"
+                            }
+                        }
                     }
+                    # Get port from bind directive
                     elseif ($line -match '^\s*bind\s+\*:(\d+)' -and $currentSection -eq "frontend") {
                         $summary += "   Port: $($matches[1])`n"
                     }
+                    # Get backend servers
                     elseif ($line -match '^\s*server\s+(\S+)\s+(\S+)' -and $currentSection -eq "backend") {
                         $summary += "   • Server: $($matches[2])`n"
                     }
-                }
-                
-                if (-not ($frontendFound -or $backendFound)) {
-                    $summary += "No frontend or backend configurations found.`n"
                 }
                 
                 $summary += "`n═══════════════════════════════════════`n"
@@ -92,52 +98,55 @@ function Set-HaproxyConfig {
         return $false
     }
 
-    # Build configuration with explicit line endings
-    $configLines = @(
+    # Build configuration sections
+    $globalSection = @(
         "global",
-        "    log /dev/log local0",
-        "    log /dev/log local1 notice",
-        "    chroot /var/lib/haproxy",
-        "    stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners",
-        "    stats timeout 30s",
-        "    user haproxy",
-        "    group haproxy",
-        "    daemon",
+        "    log stdout format raw local0",
         "    maxconn 4096",
-        "",
-        "defaults",
-        "    log     global",
-        "    mode    $Mode",
-        "    option  ${Mode}log",
-        "    option  dontlognull",
-        "    retries 3",
-        "    timeout connect 5000",
-        "    timeout client  50000",
-        "    timeout server  50000",
-        "",
-        "frontend $Frontend",
-        "    bind *:$Port",
-        "    mode $Mode",
-        "    default_backend $Backend",
-        "",
-        "backend $Backend",
-        "    mode $Mode",
-        "    balance roundrobin",
-        "    option ${Mode}close",
-        "    option forwardfor"
+        "    daemon"
     )
 
-    # Add each backend server with a unique name
+    $defaultsSection = @(
+        "defaults",
+        "    log global",
+        "    mode $Mode",
+        "    timeout connect 5s",
+        "    timeout client 50s",
+        "    timeout server 50s"
+    )
+
+    $frontendSection = @(
+        "frontend $Frontend",
+        "    bind *:$Port",
+        "    default_backend $Backend"
+    )
+
+    $backendSection = @(
+        "backend $Backend",
+        "    balance roundrobin"
+    )
+
+    # Add each backend server with proper indentation
     $serverCount = 1
     foreach ($server in $BackendServers) {
-        $serverName = $server.Split(':')[0]
-        $configLines += "    server $($serverName.Replace('.', '-'))-$serverCount $server check"
+        $backendSection += "    server server$serverCount $server check"
         $serverCount++
     }
 
-    # Join lines with Linux line endings and ensure final newline
-    $config = $configLines -join "`n"
-    $config += "`n"
+    # Join all sections with double newlines between them
+    $configLines = @(
+        $globalSection -join "`n",
+        "",
+        $defaultsSection -join "`n",
+        "",
+        $frontendSection -join "`n",
+        "",
+        $backendSection -join "`n",
+        "" # Ensure final newline
+    )
+
+    # Create final config with Unix line endings
+    $config = ($configLines -join "`n").Replace("`r`n", "`n")
     
     Write-Host "Generated config:"
     Write-Host "----------------------------------------"
@@ -217,8 +226,45 @@ function Test-HaproxyConfig {
             return $false
         }
 
+        # First verify the file has proper line endings and structure
+        $content = Get-Content $ConfigPath -Raw
+        
+        # Check for basic structure
+        if (-not ($content -match 'global\s')) {
+            Write-Host "Error: Missing 'global' section"
+            return $false
+        }
+        if (-not ($content -match 'defaults\s')) {
+            Write-Host "Error: Missing 'defaults' section"
+            return $false
+        }
+        if (-not ($content -match 'frontend\s')) {
+            Write-Host "Error: Missing 'frontend' section"
+            return $false
+        }
+        if (-not ($content -match 'backend\s')) {
+            Write-Host "Error: Missing 'backend' section"
+            return $false
+        }
+
+        # Fix line endings if needed
+        if ($content -and -not $content.EndsWith("`n")) {
+            Write-Host "Config file is missing final newline, attempting to fix..."
+            $content = $content.TrimEnd() + "`n"
+            try {
+                $tempFile = "/tmp/haproxy.cfg.tmp"
+                [System.IO.File]::WriteAllText($tempFile, $content)
+                & sudo mv $tempFile $ConfigPath
+                & sudo chown haproxy:haproxy $ConfigPath
+                & sudo chmod 644 $ConfigPath
+                Write-Host "Fixed line endings in config file"
+            }
+            catch {
+                Write-Host "Failed to fix line endings: $($_.Exception.Message)"
+            }
+        }
+
         Write-Host "Running HAProxy config test..."
-        # Capture output and error streams separately
         $output = & sudo haproxy -c -f $ConfigPath 2>&1
         $exitCode = $LASTEXITCODE
         
@@ -231,10 +277,34 @@ function Test-HaproxyConfig {
         }
         
         if ($exitCode -eq 0) {
-            Write-Host "Configuration test passed"
+            Write-Host "Configuration test passed successfully"
             return $true
         } else {
             Write-Host "Configuration test failed"
+            if ($output -match "Missing LF") {
+                Write-Host "Line ending issue detected, attempting to fix..."
+                try {
+                    $content = (Get-Content $ConfigPath -Raw).TrimEnd() + "`n"
+                    $tempFile = "/tmp/haproxy.cfg.tmp"
+                    [System.IO.File]::WriteAllText($tempFile, $content)
+                    & sudo mv $tempFile $ConfigPath
+                    & sudo chown haproxy:haproxy $ConfigPath
+                    & sudo chmod 644 $ConfigPath
+                    
+                    # Test again after fixing
+                    Write-Host "Retesting configuration after fixing line endings..."
+                    $output = & sudo haproxy -c -f $ConfigPath 2>&1
+                    $exitCode = $LASTEXITCODE
+                    
+                    if ($exitCode -eq 0) {
+                        Write-Host "Configuration test passed after fixing line endings"
+                        return $true
+                    }
+                }
+                catch {
+                    Write-Host "Failed to fix line endings: $($_.Exception.Message)"
+                }
+            }
             return $false
         }
     }

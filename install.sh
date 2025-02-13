@@ -46,8 +46,40 @@ sudo chown -R haproxy:haproxy /run/haproxy
 pwsh -Command "Install-Module -Name Pode -Force -AllowClobber"
 pwsh -Command "Install-Module -Name Pode.Web -Force -AllowClobber"
 
-# Create a backup of original HAProxy config
-sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.backup
+# Backup original HAProxy config
+sudo mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.original
+
+# Create new HAProxy config with the simplified format
+cat << 'EOF' | sudo tee /etc/haproxy/haproxy.cfg
+global
+    log stdout format raw local0
+    maxconn 4096
+    daemon
+
+defaults
+    log global
+    mode http
+    timeout connect 5s
+    timeout client 50s
+    timeout server 50s
+
+frontend http_front
+    bind *:80
+    default_backend web_servers
+
+backend web_servers
+    balance roundrobin
+    server server1 192.168.1.101:80 check
+    server server2 192.168.1.102:80 check
+
+EOF
+
+# Ensure proper line ending
+echo "" | sudo tee -a /etc/haproxy/haproxy.cfg
+
+# Set proper permissions on new config
+sudo chown haproxy:haproxy /etc/haproxy/haproxy.cfg
+sudo chmod 644 /etc/haproxy/haproxy.cfg
 
 # Enable and start HAProxy service
 sudo systemctl enable haproxy
