@@ -13,7 +13,9 @@ Start-PodeServer {
     Use-PodeWebTemplates -Title 'HAProxy Management' -Theme Dark
 
     # Import the module at server startup
-    Import-Module $HaproxyUtilsPath
+    #Import-Module $HaproxyUtilsPath
+
+    Import-PodeModule $HaproxyUtilsPath
 
     # Add the navigation pages
     Add-PodeWebPage -Name 'Dashboard' -Icon 'home' -ScriptBlock {
