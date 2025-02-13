@@ -81,7 +81,22 @@ Start-PodeServer {
                     New-PodeWebAlert -Type $(if ($isRunning) { 'Success' } else { 'Warning' }) -Value "HAProxy Service Status: $serviceStatus"
                 )
                 New-PodeWebCard -Name 'Active Configuration' -Content @(
-                    New-PodeWebText -Value $config
+                    New-PodeWebForm -Name 'ConfigForm' -Content @(
+                        New-PodeWebCard -Name 'Frontend Configuration' -Content @(
+                            New-PodeWebTextbox -Name 'Frontend' -Value $config.Frontend -Label 'Frontend Name'
+                            New-PodeWebTextbox -Name 'Port' -Value $config.Port -Label 'Port'
+                            New-PodeWebSelect -Name 'Mode' -Options @('http', 'tcp') -SelectedValue $config.Mode -Label 'Mode'
+                        )
+                        New-PodeWebCard -Name 'Backend Configuration' -Content @(
+                            New-PodeWebTextbox -Name 'Backend' -Value $config.Backend -Label 'Backend Name'
+                            New-PodeWebTextbox -Name 'BackendServers' -Value $config.BackendServers -Label 'Backend Servers (comma-separated)'
+                        )
+                    ) -ScriptBlock {
+                        param($Frontend, $Backend, $BackendServers, $Mode, $Port)
+                        Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                        Show-UserMessage -Message "Configuration updated successfully!" -Type Success
+                        Move-PodeWebUrl -Url '/dashboard'
+                    }
                 )
             )
         }
@@ -96,7 +111,8 @@ Start-PodeServer {
         }
     }
 
-    Add-PodeWebPage -Name 'Configuration' -Icon 'settings' -ScriptBlock {
+    # Configuration page removed as it's consolidated into the Dashboard
+    <#
         Write-Host "Loading Configuration page"
         try {
             Write-Host "Building configuration interface"
@@ -139,6 +155,150 @@ Start-PodeServer {
                     } -Columns @(
                         New-PodeWebTableColumn -Name Value -Alignment Center
                         New-PodeWebTableColumn -Name Description
+                    
+                    ) -Buttons @(
+                        New-PodeWebTableButton -Name Edit -Icon Edit -ScriptBlock {
+                            param($Value, $ActionName)
+                            Show-PodeWebModal -Name "Edit_$ActionName" -DataValue $Value -ScriptBlock {
+                                param($Value, $ActionName)
+                                New-PodeWebForm -Name "EditForm_$ActionName" -Content @(
+                                    New-PodeWebTextbox -Name 'NewValue' -Value $Value
+                                ) -ScriptBlock {
+                                    param($NewValue, $ActionName)
+                                    # Update the configuration
+                                    switch ($ActionName) {
+                                        'Frontend' { $Frontend = $NewValue }
+                                        'Mode' { $Mode = $NewValue }
+                                        'Port' { $Port = [int]$NewValue }
+                                        'Backend' { $Backend = $NewValue }
+                                    }
+                                    Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                                    Show-UserMessage -Message "Configuration updated successfully!" -Type Success
+                                    Move-PodeWebUrl -Url '/configuration'
+                                }
+                            }
+                        }
+                    )
+
+                    # Backend Servers Table
+                    New-PodeWebTable -Name 'Backend_Servers' -DataColumn Server -SimpleSort -ScriptBlock {
+                        $config = Get-HaproxyConfig
+                        $backendServers = @()
+                        $servers = $BackendServers -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+                        foreach ($server in $servers) {
+                            $backendServers += [PSCustomObject]@{
+                                Server = $server
+                                Status = 'Active'
+                                Action = $server
+                            }
+                        }
+                        return $backendServers
+                    } -Columns @(
+                        New-PodeWebTableColumn -Name Status -Alignment Center
+                    ) -Buttons @(
+                        New-PodeWebTableButton -Name Edit -Icon Edit -ScriptBlock {
+                            param($Value)
+                            Show-PodeWebModal -Name 'EditServer' -DataValue $Value -ScriptBlock {
+                                param($Value)
+                                New-PodeWebForm -Name 'EditServerForm' -Content @(
+                                    New-PodeWebTextbox -Name 'Server' -Value $Value
+                                ) -ScriptBlock {
+                                    param($Server)
+                                    # Update server in configuration
+                                    $BackendServers = $BackendServers -replace $Value, $Server
+                                    Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                                    Show-UserMessage -Message "Server updated successfully!" -Type Success
+                                    Move-PodeWebUrl -Url '/configuration'
+                                }
+                            }
+                        }
+                        New-PodeWebTableButton -Name Delete -Icon Trash -ScriptBlock {
+                            param($Value)
+                            # Remove server from configuration
+                            $BackendServers = $BackendServers -replace $Value, ''
+                            Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                            Show-UserMessage -Message "Server removed successfully!" -Type Success
+                            Move-PodeWebUrl -Url '/configuration'
+                        }
+                    )
+
+                    # Add New Server Button
+                    New-PodeWebButton -Name 'Add Server' -Icon Plus -ScriptBlock {
+                        Show-PodeWebModal -Name 'AddServer' -ScriptBlock {
+                            New-PodeWebForm -Name 'AddServerForm' -Content @(
+                                New-PodeWebTextbox -Name 'Server' -Type Text -Required -DisplayName 'Server Address:Port'
+                            ) -ScriptBlock {
+                                param($Server)
+                                # Add new server to configuration
+                                $BackendServers += $Server
+                                Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                                Show-UserMessage -Message "Server added successfully!" -Type Success
+                                Move-PodeWebUrl -Url '/configuration'
+                            }
+                        }
+                    }
+                )
+
+                # Current Configuration View
+                New-PodeWebCard -Name 'Current Configuration' -Content @(
+                    New-PodeWebText -Value (Get-HaproxyConfig)
+                )
+            )
+        }
+        catch {
+            Write-Host "Configuration page error: $($_.Exception.Message)"
+            Write-Host "Stack trace: $($_.ScriptStackTrace)"
+            New-PodeWebContainer -NoBackground -Content @(
+                New-PodeWebCard -NoTitle -Content @(
+                    New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
+                )
+            )
+        }
+    }
+    #>
+        Write-Host "Loading Configuration page"
+        try {
+            Write-Host "Building configuration interface"
+            New-PodeWebContainer -NoBackground -Content @(
+                New-PodeWebCard -Name 'HAProxy Settings' -Content @(
+                    # Frontend Table
+                    New-PodeWebTable -Name 'Frontend_Settings' -DataColumn Name -SimpleSort -ScriptBlock {
+                        $config = Get-HaproxyConfig
+                        $frontendData = @(
+                            [PSCustomObject]@{
+                                Name = 'Frontend Name'
+                                Value = $Frontend
+                                Description = 'Name of the frontend service'
+                                CanEdit = $true
+                                ActionName = 'Frontend'
+                            }
+                            [PSCustomObject]@{
+                                Name = 'Mode'
+                                Value = $Mode
+                                Description = 'Protocol mode (http/tcp)'
+                                CanEdit = $true
+                                ActionName = 'Mode'
+                            }
+                            [PSCustomObject]@{
+                                Name = 'Port'
+                                Value = $Port
+                                Description = 'Frontend port (1-65535)'
+                                CanEdit = $true
+                                ActionName = 'Port'
+                            }
+                            [PSCustomObject]@{
+                                Name = 'Backend Name'
+                                Value = $Backend
+                                Description = 'Name of the backend service'
+                                CanEdit = $true
+                                ActionName = 'Backend'
+                            }
+                        )
+                        return $frontendData
+                    } -Columns @(
+                        New-PodeWebTableColumn -Name Value -Alignment Center
+                        New-PodeWebTableColumn -Name Description
+                    
                     ) -Buttons @(
                         New-PodeWebTableButton -Name Edit -Icon Edit -ScriptBlock {
                             param($Value, $ActionName)
