@@ -149,7 +149,14 @@ Start-PodeServer {
                                 ) -ScriptBlock {
                                     param($NewValue, $ActionName)
                                     # Update the configuration
-                                    # Logic here to update specific setting
+                                    switch ($ActionName) {
+                                        'Frontend' { $Frontend = $NewValue }
+                                        'Mode' { $Mode = $NewValue }
+                                        'Port' { $Port = [int]$NewValue }
+                                        'Backend' { $Backend = $NewValue }
+                                    }
+                                    Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                                    Show-UserMessage -Message "Configuration updated successfully!" -Type Success
                                     Move-PodeWebUrl -Url '/configuration'
                                 }
                             }
@@ -181,6 +188,9 @@ Start-PodeServer {
                                 ) -ScriptBlock {
                                     param($Server)
                                     # Update server in configuration
+                                    $BackendServers = $BackendServers -replace $Value, $Server
+                                    Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                                    Show-UserMessage -Message "Server updated successfully!" -Type Success
                                     Move-PodeWebUrl -Url '/configuration'
                                 }
                             }
@@ -188,6 +198,9 @@ Start-PodeServer {
                         New-PodeWebTableButton -Name Delete -Icon Trash -ScriptBlock {
                             param($Value)
                             # Remove server from configuration
+                            $BackendServers = $BackendServers -replace $Value, ''
+                            Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                            Show-UserMessage -Message "Server removed successfully!" -Type Success
                             Move-PodeWebUrl -Url '/configuration'
                         }
                     )
@@ -200,6 +213,9 @@ Start-PodeServer {
                             ) -ScriptBlock {
                                 param($Server)
                                 # Add new server to configuration
+                                $BackendServers += $Server
+                                Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $BackendServers -Mode $Mode -Port $Port
+                                Show-UserMessage -Message "Server added successfully!" -Type Success
                                 Move-PodeWebUrl -Url '/configuration'
                             }
                         }
