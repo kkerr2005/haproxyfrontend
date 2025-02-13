@@ -4,20 +4,20 @@ function Get-HaproxyConfig {
     )
     try {
         Write-Host "Attempting to read HAProxy config from: $ConfigPath"
-        # Use sudo to read the config file
-        $config = & sudo cat $ConfigPath 2>&1
+        # Use sudo to read the config file and join the lines with newlines
+        $config = (& sudo cat $ConfigPath 2>&1) -join "`n"
         Write-Host "Read command exit code: $LASTEXITCODE"
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Successfully read config file"
             return $config
         }
         Write-Host "Failed to read config file: $config"
-        return $null
+        return "No configuration found"
     }
     catch {
         Write-Host "Exception reading config: $($_.Exception.Message)"
         Write-Error "Failed to read HAProxy configuration: $_"
-        return $null
+        return "Error reading configuration"
     }
 }
 
