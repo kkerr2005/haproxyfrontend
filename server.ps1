@@ -88,7 +88,7 @@ Start-PodeServer {
                             New-PodeWebSelect -Name 'Mode' -Options @('http', 'tcp') -SelectedValue $config.Mode -DisplayName 'Mode'
                         )
                         New-PodeWebCard -Name 'Backend Configuration' -Content @(
-                            New-PodeWebTextbox -Name 'Backend' -Value $config.Backend -Label 'Backend Name'
+                            New-PodeWebTextbox -Name 'Backend' -Value $config.Backend -DisplayName 'Backend Name'
                             New-PodeWebTextbox -Name 'BackendServers' -Value $config.BackendServers -DisplayName 'Backend Servers (comma-separated)'
                         )
                     ) -ScriptBlock {
