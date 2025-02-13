@@ -61,7 +61,7 @@ Start-PodeServer {
         Write-Host "Loading Dashboard page"
         try {
             Write-Host "Getting HAProxy config"
-            $config = Get-HaproxyConfig -Simple
+            $config = Get-HaproxyConfig -Simple "/etc/haproxy/haproxy.cfg"
             Write-Host "Config retrieved"
             
             Write-Host "Testing config"
