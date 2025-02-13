@@ -1,17 +1,57 @@
 function Get-HaproxyConfig {
     param(
-        [string]$ConfigPath = '/etc/haproxy/haproxy.cfg'
+        [string]$ConfigPath = '/etc/haproxy/haproxy.cfg',
+        [switch]$Simple
     )
     try {
         Write-Host "Attempting to read HAProxy config from: $ConfigPath"
-        # Use sudo to read the config file and join the lines with newlines
-        $config = (& sudo cat $ConfigPath 2>&1) -join "`n"
+        # Use sudo to read the config file
+        $configLines = & sudo cat $ConfigPath 2>&1
         Write-Host "Read command exit code: $LASTEXITCODE"
+        
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Successfully read config file"
-            return $config
+            
+            if ($Simple) {
+                $summary = "`n═══════════════════════════════════════`n"
+                $summary += "      HAProxy Active Configuration      `n"
+                $summary += "═══════════════════════════════════════`n`n"
+                $currentSection = $null
+                $frontendFound = $false
+                $backendFound = $false
+                
+                foreach ($line in $configLines) {
+                    $line = $line.Trim()
+                    if ($line -match '^frontend\s+(\S+)') {
+                        $frontendFound = $true
+                        $currentSection = "frontend"
+                        $summary += "► FRONTEND: $($matches[1])`n"
+                    }
+                    elseif ($line -match '^backend\s+(\S+)') {
+                        $backendFound = $true
+                        $currentSection = "backend"
+                        $summary += "`n► BACKEND: $($matches[1])`n"
+                    }
+                    elseif ($line -match '^\s*bind\s+\*:(\d+)' -and $currentSection -eq "frontend") {
+                        $summary += "   Port: $($matches[1])`n"
+                    }
+                    elseif ($line -match '^\s*server\s+(\S+)\s+(\S+)' -and $currentSection -eq "backend") {
+                        $summary += "   • Server: $($matches[2])`n"
+                    }
+                }
+                
+                if (-not ($frontendFound -or $backendFound)) {
+                    $summary += "No frontend or backend configurations found.`n"
+                }
+                
+                $summary += "`n═══════════════════════════════════════`n"
+                return $summary
+            }
+            else {
+                return ($configLines -join "`n")
+            }
         }
-        Write-Host "Failed to read config file: $config"
+        Write-Host "Failed to read config file: $configLines"
         return "No configuration found"
     }
     catch {

@@ -28,7 +28,7 @@ Start-PodeServer {
         Write-Host "Loading Dashboard page"
         try {
             Write-Host "Getting HAProxy config"
-            $config = Get-HaproxyConfig
+            $config = Get-HaproxyConfig -Simple
             Write-Host "Config retrieved:"
             Write-Host $config
             
@@ -42,8 +42,8 @@ Start-PodeServer {
                     New-PodeWebAlert -Type Info -Value 'Welcome to HAProxy Management Interface'
                     New-PodeWebAlert -Type $(if ($configStatus) { 'Success' } else { 'Failure' }) -Value "HAProxy Configuration Status: $(if ($configStatus) { 'Valid' } else { 'Invalid' })"
                 )
-                New-PodeWebCard -DisplayName 'Current Configuration' -Content @(
-                    New-PodeWebCode -Value $config
+                New-PodeWebCard -DisplayName 'Active Configuration' -Content @(
+                    New-PodeWebText -Value $config
                 )
             )
         }
