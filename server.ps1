@@ -127,9 +127,7 @@ Start-PodeServer {
                     New-PodeWebTextbox -Name 'Port' -Type Number -DisplayName 'Frontend Port' -Required
                     New-PodeWebTextbox -Name 'Backend' -Type Text -DisplayName 'Backend Name' -Required
                     New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Placeholder 'server1:port,server2:port' -Required
-                ) -Actions @(
-                    New-PodeWebFormAction -Name 'Save' -ActionValue 'Save Configuration'
-                )
+                ) -Submit
 
                 New-PodeWebCard -Title 'Current Configuration' -Content @(
                     New-PodeWebCode -Value (Get-HaproxyConfig)
