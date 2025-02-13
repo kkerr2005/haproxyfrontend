@@ -225,9 +225,7 @@ function Test-HaproxyConfig {
         }
 
         Write-Host "Config file content verification:"
-        $lastChar = $fileContent[-1]
-        Write-Host "Last character ASCII value: $([int][char]$lastChar)"
-        Write-Host "File ends with newline: $($fileContent.EndsWith("`n"))"
+        Write-Host "File exists and has content"
 
         # Now test the configuration
         Write-Host "Running HAProxy config test..."
