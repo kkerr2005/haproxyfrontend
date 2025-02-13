@@ -80,7 +80,7 @@ Start-PodeServer {
                     New-PodeWebAlert -Type $(if ($configResult) { 'Success' } else { 'Error' }) -Value "HAProxy Configuration Status: $(if ($configResult) { 'Valid' } else { 'Invalid' })"
                     New-PodeWebAlert -Type $(if ($isRunning) { 'Success' } else { 'Warning' }) -Value "HAProxy Service Status: $serviceStatus"
                 )
-                New-PodeWebCard -Title 'Active Configuration' -Content @(
+                New-PodeWebCard -Name 'Active Configuration' -Content @(
                     New-PodeWebText -Value $config
                 )
             )
@@ -223,7 +223,7 @@ Start-PodeServer {
                     New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Required
                 ) -Submit 'Save Configuration'
 
-                New-PodeWebCard -Title 'Current Configuration' -Content @(
+                New-PodeWebCard -Name 'Current Configuration' -Content @(
                     New-PodeWebText -Value (Get-HaproxyConfig)
                 )
             )
