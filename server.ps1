@@ -102,7 +102,24 @@ Start-PodeServer {
             Write-Host "Building configuration form"
             New-PodeWebContainer -NoBackground -Content @(
                 New-PodeWebForm -Name 'haproxy-config' -ScriptBlock {
-                    param($Frontend, $Mode, $Port, $Backend, $BackendServers)
+                    param(
+                        [Parameter(Mandatory)]
+                        [string]$Frontend,
+
+                        [Parameter(Mandatory)]
+                        [ValidateSet('http', 'tcp')]
+                        [string]$Mode,
+
+                        [Parameter(Mandatory)]
+                        [ValidateRange(1, 65535)]
+                        [int]$Port,
+
+                        [Parameter(Mandatory)]
+                        [string]$Backend,
+
+                        [Parameter(Mandatory)]
+                        [string]$BackendServers
+                    )
                     
                     Write-Host "===================================================="
                     Write-Host "Form Submission Received - HAProxy Configuration"
