@@ -86,6 +86,12 @@ function Set-HaproxyConfig {
     Write-Host "Config Path     : $ConfigPath"
     Write-Host "============================================"
     
+    # Validate that we have at least one backend server
+    if ($BackendServers.Count -eq 0) {
+        Write-Host "Error: No backend servers provided"
+        return $false
+    }
+
     $config = @"
 global
     log /dev/log local0
@@ -115,14 +121,21 @@ frontend $Frontend
 
 backend $Backend
     mode $Mode
+    balance roundrobin
+    option ${Mode}close
+    option forwardfor
 "@
 
+    # Add each backend server with a unique name
+    $serverCount = 1
     foreach ($server in $BackendServers) {
-        $config += "`n    server server-$($server.Replace('.', '-')) $server check"
+        $serverName = $server.Split(':')[0]
+        $config += "`n    server $($serverName.Replace('.', '-'))-$serverCount $server check"
+        $serverCount++
     }
 
-    # Ensure Linux line endings
-    $config = $config.Replace("`r`n", "`n")
+    # Ensure Linux line endings and add final newline
+    $config = $config.Replace("`r`n", "`n") + "`n"
     
     Write-Host "Generated config:"
     Write-Host "----------------------------------------"
@@ -196,13 +209,26 @@ function Test-HaproxyConfig {
     
     try {
         Write-Host "Testing HAProxy config at: $ConfigPath"
-        $result = & haproxy -c -f $ConfigPath 2>&1
+        $result = & sudo haproxy -c -f $ConfigPath 2>&1
         Write-Host "Test result exit code: $LASTEXITCODE"
         Write-Host "Test output: $result"
-        return $LASTEXITCODE -eq 0
+        
+        if ($LASTEXITCODE -ne 0) {
+            # Extract meaningful error message from HAProxy output
+            $errorMessage = $result | Where-Object { $_ -match '^\[ALERT\]' } | ForEach-Object { 
+                $_ -replace '^\[ALERT\]\s+\(\d+\)\s*:\s*', ''
+            }
+            
+            if ($errorMessage) {
+                Write-Error "HAProxy configuration error: $($errorMessage -join '; ')"
+            }
+            return $false
+        }
+        return $true
     }
     catch {
         Write-Host "Exception testing config: $($_.Exception.Message)"
+        Write-Error $_.Exception.Message
         return $false
     }
 }

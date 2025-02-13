@@ -40,7 +40,7 @@ Start-PodeServer {
             New-PodeWebContainer -NoBackground -Content @(
                 New-PodeWebCard -NoTitle -Content @(
                     New-PodeWebAlert -Type Info -Value 'Welcome to HAProxy Management Interface'
-                    New-PodeWebAlert -Type $(if ($configStatus) { 'Success' } else { 'Failure' }) -Value "HAProxy Configuration Status: $(if ($configStatus) { 'Valid' } else { 'Invalid' })"
+                    New-PodeWebAlert -Type $(if ($configStatus) { 'Success' } else { 'Error' }) -Value "HAProxy Configuration Status: $(if ($configStatus) { 'Valid' } else { 'Invalid' })"
                 )
                 New-PodeWebCard -DisplayName 'Active Configuration' -Content @(
                     New-PodeWebText -Value $config
@@ -52,7 +52,7 @@ Start-PodeServer {
             Write-Host "Stack trace: $($_.ScriptStackTrace)"
             New-PodeWebContainer -NoBackground -Content @(
                 New-PodeWebCard -NoTitle -Content @(
-                    New-PodeWebAlert -Type Failure -Value "Error: $($_.Exception.Message)"
+                    New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
                 )
             )
         }
@@ -89,7 +89,7 @@ Start-PodeServer {
                         if ($missingFields.Count -gt 0) {
                             $errorMsg = "Missing required fields: $($missingFields -join ', ')"
                             Write-Host "Validation Error: $errorMsg"
-                            Out-PodeWebToast -Message $errorMsg -Type Failure -Duration 5
+                            Out-PodeWebToast -Message $errorMsg -Type Error -Duration 5
                             return
                         }
 
@@ -97,7 +97,7 @@ Start-PodeServer {
                         $portNumber = 0
                         if (-not [int]::TryParse($Port, [ref]$portNumber)) {
                             Write-Host "Invalid port number format"
-                            Out-PodeWebToast -Message "Port must be a valid number" -Type Failure -Duration 5
+                            Out-PodeWebToast -Message "Port must be a valid number" -Type Error -Duration 5
                             return
                         }
 
@@ -106,7 +106,7 @@ Start-PodeServer {
                         # Validate port range
                         if ($portNumber -lt 1 -or $portNumber -gt 65535) {
                             Write-Host "Port number out of range: $portNumber"
-                            Out-PodeWebToast -Message "Port must be between 1 and 65535" -Type Failure -Duration 5
+                            Out-PodeWebToast -Message "Port must be between 1 and 65535" -Type Error -Duration 5
                             return
                         }
 
@@ -116,20 +116,20 @@ Start-PodeServer {
                         
                         if ($servers.Count -eq 0) {
                             Write-Host "No valid backend servers found"
-                            Out-PodeWebToast -Message "Please provide at least one backend server in the format hostname:port" -Type Failure -Duration 5
+                            Out-PodeWebToast -Message "Please provide at least one backend server in the format hostname:port" -Type Error -Duration 5
                             return
                         }
 
                         foreach ($server in $servers) {
                             if (-not ($server -match '^[^:]+:\d+$')) {
                                 Write-Host "Invalid server format: $server"
-                                Out-PodeWebToast -Message "Invalid server format: $server. Must be hostname:port" -Type Failure -Duration 5
+                                Out-PodeWebToast -Message "Invalid server format: $server. Must be hostname:port" -Type Error -Duration 5
                                 return
                             }
                             $serverPort = [int]($server -split ':')[1]
                             if ($serverPort -lt 1 -or $serverPort -gt 65535) {
                                 Write-Host "Invalid server port: $serverPort"
-                                Out-PodeWebToast -Message "Invalid port in server $server. Port must be between 1 and 65535" -Type Failure -Duration 5
+                                Out-PodeWebToast -Message "Invalid port in server $server. Port must be between 1 and 65535" -Type Error -Duration 5
                                 return
                             }
                         }
@@ -165,7 +165,7 @@ Start-PodeServer {
                     catch {
                         Write-Host "Error during configuration: $($_.Exception.Message)"
                         Write-Host "Stack trace: $($_.ScriptStackTrace)"
-                        Out-PodeWebToast -Message "Configuration Error" -Duration 5 -Type Failure
+                        Out-PodeWebToast -Message "Configuration Error" -Duration 5 -Type Error
                         Show-PodeWebError -Message $_.Exception.Message
                     }
                 } -Content @(
@@ -186,7 +186,7 @@ Start-PodeServer {
             Write-Host "Stack trace: $($_.ScriptStackTrace)"
             New-PodeWebContainer -NoBackground -Content @(
                 New-PodeWebCard -NoTitle -Content @(
-                    New-PodeWebAlert -Type Failure -Value "Error: $($_.Exception.Message)"
+                    New-PodeWebAlert -Type Error -Value "Error: $($_.Exception.Message)"
                 )
             )
         }
