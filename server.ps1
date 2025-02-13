@@ -43,7 +43,7 @@ Start-PodeServer {
                     New-PodeWebAlert -Type $(if ($configStatus) { 'Success' } else { 'Failure' }) -Value "HAProxy Configuration Status: $(if ($configStatus) { 'Valid' } else { 'Invalid' })"
                 )
                 New-PodeWebCard -Title 'Current Configuration' -Content @(
-                    New-PodeWebCode -Value $config -Language 'powershell'
+                    New-PodeWebCode -Value $config
                 )
             )
         }
@@ -132,7 +132,7 @@ Start-PodeServer {
                 )
 
                 New-PodeWebCard -Title 'Current Configuration' -Content @(
-                    New-PodeWebCode -Value (Get-HaproxyConfig) -Language 'powershell'
+                    New-PodeWebCode -Value (Get-HaproxyConfig)
                 )
             )
         }
