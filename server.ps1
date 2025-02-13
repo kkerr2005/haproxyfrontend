@@ -69,98 +69,112 @@ Start-PodeServer {
                     Write-Host "===================================================="
                     Write-Host "Form Submission Received - HAProxy Configuration"
                     Write-Host "===================================================="
-                    Write-Host "Processing submission with values:"
-                    Write-Host "Frontend Name : [$Frontend]"
-                    Write-Host "Mode         : [$Mode]"
-                    Write-Host "Port         : [$Port]"
-                    Write-Host "Backend Name : [$Backend]"
-                    Write-Host "Servers      : [$BackendServers]"
+                    Write-Host "RAW VALUES RECEIVED:"
+                    Write-Host "Frontend Name : '$Frontend'"
+                    Write-Host "Mode         : '$Mode'"
+                    Write-Host "Port         : '$Port'"
+                    Write-Host "Backend Name : '$Backend'"
+                    Write-Host "Servers      : '$BackendServers'"
                     Write-Host "===================================================="
                     
                     try {
-                        Write-Host "Step 1: Validating input parameters"
-                        if ([string]::IsNullOrEmpty($Frontend) -or 
-                            [string]::IsNullOrEmpty($Mode) -or 
-                            [string]::IsNullOrEmpty($Backend) -or 
-                            [string]::IsNullOrEmpty($BackendServers)) {
-                            throw "All fields are required. Please check your input."
+                        # Initial validation with detailed messages
+                        $missingFields = @()
+                        if ([string]::IsNullOrWhiteSpace($Frontend)) { $missingFields += "Frontend Name" }
+                        if ([string]::IsNullOrWhiteSpace($Mode)) { $missingFields += "Mode" }
+                        if ([string]::IsNullOrWhiteSpace($Port)) { $missingFields += "Port" }
+                        if ([string]::IsNullOrWhiteSpace($Backend)) { $missingFields += "Backend Name" }
+                        if ([string]::IsNullOrWhiteSpace($BackendServers)) { $missingFields += "Backend Servers" }
+
+                        if ($missingFields.Count -gt 0) {
+                            $errorMsg = "Missing required fields: $($missingFields -join ', ')"
+                            Write-Host "Validation Error: $errorMsg"
+                            Out-PodeWebToast -Message $errorMsg -Type Failure -Duration 5
+                            return
                         }
 
-                        if (-not [int]::TryParse($Port, [ref]$null)) {
-                            throw "Port must be a valid number"
+                        # Type conversion validation
+                        $portNumber = 0
+                        if (-not [int]::TryParse($Port, [ref]$portNumber)) {
+                            Write-Host "Invalid port number format"
+                            Out-PodeWebToast -Message "Port must be a valid number" -Type Failure -Duration 5
+                            return
                         }
 
-                        Write-Host "Step 2: Processing backend servers string"
-                        $servers = $BackendServers -split ',' | ForEach-Object { $_.Trim() }
-                        if ($servers.Count -eq 0) {
-                            throw "No valid backend servers provided"
+                        Write-Host "All fields provided, proceeding with validation..."
+                        
+                        # Validate port range
+                        if ($portNumber -lt 1 -or $portNumber -gt 65535) {
+                            Write-Host "Port number out of range: $portNumber"
+                            Out-PodeWebToast -Message "Port must be between 1 and 65535" -Type Failure -Duration 5
+                            return
                         }
+
+                        # Parse and validate backend servers
+                        $servers = $BackendServers -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
                         Write-Host "Parsed servers: $($servers -join ', ')"
                         
-                        Write-Host "Step 3: Checking config path accessibility"
-                        $configPath = '/etc/haproxy/haproxy.cfg'
-                        $testPath = & sudo test -w $configPath 2>&1
-                        $pathAccessible = $LASTEXITCODE -eq 0
-                        Write-Host "Config path accessible: $pathAccessible"
-                        
-                        if (-not $pathAccessible) {
-                            Write-Host "Config path not accessible: $configPath"
-                            throw "Cannot access HAProxy config at $configPath. Check permissions."
+                        if ($servers.Count -eq 0) {
+                            Write-Host "No valid backend servers found"
+                            Out-PodeWebToast -Message "Please provide at least one backend server in the format hostname:port" -Type Failure -Duration 5
+                            return
                         }
+
+                        foreach ($server in $servers) {
+                            if (-not ($server -match '^[^:]+:\d+$')) {
+                                Write-Host "Invalid server format: $server"
+                                Out-PodeWebToast -Message "Invalid server format: $server. Must be hostname:port" -Type Failure -Duration 5
+                                return
+                            }
+                            $serverPort = [int]($server -split ':')[1]
+                            if ($serverPort -lt 1 -or $serverPort -gt 65535) {
+                                Write-Host "Invalid server port: $serverPort"
+                                Out-PodeWebToast -Message "Invalid port in server $server. Port must be between 1 and 65535" -Type Failure -Duration 5
+                                return
+                            }
+                        }
+
+                        Write-Host "All validation passed, proceeding with configuration..."
                         
-                        Write-Host "Step 4: Setting HAProxy config"
-                        $configSet = Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $servers -Mode $Mode -Port $Port
+                        # Set the configuration
+                        $configSet = Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $servers -Mode $Mode -Port $portNumber
                         
                         if (-not $configSet) {
                             throw "Failed to set HAProxy configuration"
                         }
                         
-                        Write-Host "Step 5: Testing new configuration"
-                        $configValid = Test-HaproxyConfig
-                        Write-Host "Config test result: $configValid"
-                        
-                        if ($configValid) {
-                            Write-Host "Step 6: Restarting HAProxy service"
-                            try {
-                                $restartResult = & sudo systemctl restart haproxy 2>&1
-                                $restartSuccess = $LASTEXITCODE -eq 0
-                                Write-Host "Restart command result: $restartResult"
-                                Write-Host "Restart exit code: $LASTEXITCODE"
-                                
-                                if ($restartSuccess) {
-                                    Write-Host "HAProxy restart successful"
-                                    Out-PodeWebToast -Message "Configuration saved and HAProxy restarted successfully!" -Duration 5 -Type Success
-                                    
-                                    # Refresh the page to show new config
-                                    Sync-PodeWebWindow
-                                }
-                                else {
-                                    Write-Host "HAProxy restart failed"
-                                    Out-PodeWebToast -Message "Configuration saved but failed to restart HAProxy: $restartResult" -Duration 5 -Type Warning
-                                }
+                        Write-Host "Testing new configuration"
+                        if (Test-HaproxyConfig) {
+                            Write-Host "Config test passed, restarting HAProxy"
+                            $restartResult = & sudo systemctl restart haproxy 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Host "HAProxy restarted successfully"
+                                Out-PodeWebToast -Message "Configuration saved and HAProxy restarted successfully!" -Duration 5 -Type Success
+                                Move-PodeWebUrl -Url "/dashboard"
                             }
-                            catch {
-                                Write-Host "Exception during restart: $($_.Exception.Message)"
-                                Out-PodeWebToast -Message "Error during restart: $($_.Exception.Message)" -Duration 5 -Type Warning
+                            else {
+                                Write-Host "HAProxy restart failed: $restartResult"
+                                Out-PodeWebToast -Message "Configuration saved but failed to restart HAProxy: $restartResult" -Duration 5 -Type Warning
                             }
                         }
                         else {
                             Write-Host "Config test failed"
-                            Out-PodeWebToast -Message "Invalid configuration detected!" -Duration 5 -Type Failure
+                            throw "Invalid HAProxy configuration detected"
                         }
                     }
                     catch {
                         Write-Host "Error during configuration: $($_.Exception.Message)"
                         Write-Host "Stack trace: $($_.ScriptStackTrace)"
-                        Out-PodeWebToast -Message "Error: $($_.Exception.Message)" -Duration 5 -Type Failure
+                        Out-PodeWebToast -Message "Configuration Error" -Duration 5 -Type Failure
+                        Show-PodeWebError -Message $_.Exception.Message
                     }
                 } -Content @(
-                    New-PodeWebTextbox -Name 'Frontend' -Type Text -DisplayName 'Frontend Name' -Required
-                    New-PodeWebSelect -Name 'Mode' -DisplayName 'Mode' -Options @('http', 'tcp') -Required
-                    New-PodeWebTextbox -Name 'Port' -Type Number -DisplayName 'Frontend Port' -Required
-                    New-PodeWebTextbox -Name 'Backend' -Type Text -DisplayName 'Backend Name' -Required
-                    New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Placeholder 'server1:port,server2:port' -Required
-                ) -Submit 'Save Configuration'
+                    New-PodeWebTextbox -Name 'Frontend' -Type Text -DisplayName 'Frontend Name' -Required -PlaceHolder 'e.g., web_frontend',
+                    New-PodeWebSelect -Name 'Mode' -DisplayName 'Mode' -Options @('http', 'tcp') -Required,
+                    New-PodeWebTextbox -Name 'Port' -Type Number -DisplayName 'Frontend Port' -Required -PlaceHolder '80',
+                    New-PodeWebTextbox -Name 'Backend' -Type Text -DisplayName 'Backend Name' -Required -PlaceHolder 'e.g., web_backend',
+                    New-PodeWebTextbox -Name 'BackendServers' -Type Text -DisplayName 'Backend Servers' -Required -PlaceHolder 'server1:8080,server2:8080'
+                ) -Submit 'Save Configuration' -AsCard
 
                 New-PodeWebCard -DisplayName 'Current Configuration' -Content @(
                     New-PodeWebCode -Value (Get-HaproxyConfig)
