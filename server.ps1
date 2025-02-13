@@ -1,6 +1,6 @@
 Import-Module Pode
 Import-Module Pode.Web
-$HaproxyUtilsPath = "$PSScriptRoot\HaproxyUtils.psm1"
+$HaproxyUtilsPath = "$PSScriptRoot/HaproxyUtils.psm1"
 
 Start-PodeServer {
     # Add a web server on port 8080
@@ -58,13 +58,14 @@ Start-PodeServer {
                         Set-HaproxyConfig -Frontend $Frontend -Backend $Backend -BackendServers $servers -Mode $Mode -Port $Port
                         
                         if (Test-HaproxyConfig) {
-                            # Use sudo with password-less configuration for haproxy restart
-                            $restartResult = Start-Process 'sudo' -ArgumentList 'systemctl restart haproxy' -Wait -PassThru
-                            if ($restartResult.ExitCode -eq 0) {
+                            # Use systemctl command directly for Linux
+                            $restartResult = $null
+                            try {
+                                $restartResult = & sudo systemctl restart haproxy 2>&1
                                 Out-PodeWebToast -Message "Configuration saved and HAProxy restarted successfully!" -Duration 5 -Type Success
                             }
-                            else {
-                                Out-PodeWebToast -Message "Configuration saved but failed to restart HAProxy" -Duration 5 -Type Warning
+                            catch {
+                                Out-PodeWebToast -Message "Configuration saved but failed to restart HAProxy: $restartResult" -Duration 5 -Type Warning
                             }
                         }
                         else {

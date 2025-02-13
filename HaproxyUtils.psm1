@@ -2,10 +2,18 @@ function Get-HaproxyConfig {
     param(
         [string]$ConfigPath = '/etc/haproxy/haproxy.cfg'
     )
-    if (Test-Path $ConfigPath) {
-        return Get-Content $ConfigPath -Raw
+    try {
+        # Use sudo to read the config file
+        $config = & sudo cat $ConfigPath 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            return $config
+        }
+        return $null
     }
-    return $null
+    catch {
+        Write-Error "Failed to read HAProxy configuration: $_"
+        return $null
+    }
 }
 
 function Set-HaproxyConfig {
@@ -54,8 +62,24 @@ backend $Backend
         $config += "`n    server server-$($server.Replace('.', '-')) $server check"
     }
 
-    $config | Out-File -FilePath $ConfigPath -Force -Encoding utf8
-    return $true
+    # Ensure Linux line endings
+    $config = $config.Replace("`r`n", "`n")
+    
+    # Write to a temporary file first
+    $tempFile = "/tmp/haproxy.cfg.tmp"
+    [System.IO.File]::WriteAllText($tempFile, $config)
+    
+    # Use sudo to move the file to its final location with proper permissions
+    try {
+        & sudo mv $tempFile $ConfigPath
+        & sudo chown haproxy:haproxy $ConfigPath
+        & sudo chmod 644 $ConfigPath
+        return $true
+    }
+    catch {
+        Write-Error "Failed to set HAProxy configuration: $_"
+        return $false
+    }
 }
 
 function Test-HaproxyConfig {
@@ -63,8 +87,13 @@ function Test-HaproxyConfig {
         [string]$ConfigPath = '/etc/haproxy/haproxy.cfg'
     )
     
-    $result = Start-Process "haproxy" -ArgumentList "-c -f $ConfigPath" -Wait -PassThru
-    return $result.ExitCode -eq 0
+    try {
+        $result = & haproxy -c -f $ConfigPath 2>&1
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
 }
 
 Export-ModuleMember -Function Get-HaproxyConfig, Set-HaproxyConfig, Test-HaproxyConfig

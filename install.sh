@@ -29,6 +29,10 @@ sudo apt-get install -y powershell
 # Install HAProxy
 sudo apt-get install -y haproxy
 
+# Create PowerShell profile directory
+mkdir -p ~/.config/powershell
+chmod 700 ~/.config/powershell
+
 # Create HAProxy directories if they don't exist
 sudo mkdir -p /etc/haproxy
 sudo mkdir -p /var/lib/haproxy
