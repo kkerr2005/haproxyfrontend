@@ -72,6 +72,19 @@ function Set-HaproxyConfig {
         [string]$ConfigPath = '/etc/haproxy/haproxy.cfg'
     )
     
+    Write-Host "============================================"
+    Write-Host "Applying HAProxy Configuration Changes:"
+    Write-Host "============================================"
+    Write-Host "Frontend Name   : $Frontend"
+    Write-Host "Backend Name    : $Backend"
+    Write-Host "Mode           : $Mode"
+    Write-Host "Port           : $Port"
+    Write-Host "Backend Servers : "
+    foreach ($server in $BackendServers) {
+        Write-Host "  • $server"
+    }
+    Write-Host "============================================"
+    
     Write-Host "Creating new HAProxy config with:"
     Write-Host "Frontend: $Frontend"
     Write-Host "Backend: $Backend"

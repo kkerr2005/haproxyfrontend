@@ -66,12 +66,15 @@ Start-PodeServer {
                 New-PodeWebForm -Name 'haproxy-config' -ScriptBlock {
                     param($Frontend, $Mode, $Port, $Backend, $BackendServers)
                     
-                    Write-Host "Form submitted with values:"
-                    Write-Host "Frontend: $Frontend"
-                    Write-Host "Mode: $Mode"
-                    Write-Host "Port: $Port"
-                    Write-Host "Backend: $Backend"
-                    Write-Host "BackendServers: $BackendServers"
+                    Write-Host "------------------------------------"
+                    Write-Host "New HAProxy Configuration Submitted:"
+                    Write-Host "------------------------------------"
+                    Write-Host "Frontend Name : $Frontend"
+                    Write-Host "Mode         : $Mode"
+                    Write-Host "Port         : $Port"
+                    Write-Host "Backend Name : $Backend"
+                    Write-Host "Servers      : $BackendServers"
+                    Write-Host "------------------------------------"
                     
                     try {
                         Write-Host "Processing backend servers string"
