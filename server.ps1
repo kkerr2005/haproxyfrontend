@@ -42,7 +42,7 @@ Start-PodeServer {
                     New-PodeWebAlert -Type Info -Value 'Welcome to HAProxy Management Interface'
                     New-PodeWebAlert -Type $(if ($configStatus) { 'Success' } else { 'Failure' }) -Value "HAProxy Configuration Status: $(if ($configStatus) { 'Valid' } else { 'Invalid' })"
                 )
-                New-PodeWebCard -Title 'Current Configuration' -Content @(
+                New-PodeWebCard -DisplayName 'Current Configuration' -Content @(
                     New-PodeWebCode -Value $config
                 )
             )
