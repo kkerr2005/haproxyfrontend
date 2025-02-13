@@ -92,50 +92,52 @@ function Set-HaproxyConfig {
         return $false
     }
 
-    $config = @"
-global
-    log /dev/log local0
-    log /dev/log local1 notice
-    chroot /var/lib/haproxy
-    stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners
-    stats timeout 30s
-    user haproxy
-    group haproxy
-    daemon
-    maxconn 4096
-    
-defaults
-    log     global
-    mode    $Mode
-    option  ${Mode}log
-    option  dontlognull
-    retries 3
-    timeout connect 5000
-    timeout client  50000
-    timeout server  50000
-
-frontend $Frontend
-    bind *:$Port
-    mode $Mode
-    default_backend $Backend
-
-backend $Backend
-    mode $Mode
-    balance roundrobin
-    option ${Mode}close
-    option forwardfor
-"@
+    # Build configuration with explicit line endings
+    $configLines = @(
+        "global",
+        "    log /dev/log local0",
+        "    log /dev/log local1 notice",
+        "    chroot /var/lib/haproxy",
+        "    stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners",
+        "    stats timeout 30s",
+        "    user haproxy",
+        "    group haproxy",
+        "    daemon",
+        "    maxconn 4096",
+        "",
+        "defaults",
+        "    log     global",
+        "    mode    $Mode",
+        "    option  ${Mode}log",
+        "    option  dontlognull",
+        "    retries 3",
+        "    timeout connect 5000",
+        "    timeout client  50000",
+        "    timeout server  50000",
+        "",
+        "frontend $Frontend",
+        "    bind *:$Port",
+        "    mode $Mode",
+        "    default_backend $Backend",
+        "",
+        "backend $Backend",
+        "    mode $Mode",
+        "    balance roundrobin",
+        "    option ${Mode}close",
+        "    option forwardfor"
+    )
 
     # Add each backend server with a unique name
     $serverCount = 1
     foreach ($server in $BackendServers) {
         $serverName = $server.Split(':')[0]
-        $config += "`n    server $($serverName.Replace('.', '-'))-$serverCount $server check"
+        $configLines += "    server $($serverName.Replace('.', '-'))-$serverCount $server check"
         $serverCount++
     }
 
-    # Ensure Linux line endings and add final newline
-    $config = $config.Replace("`r`n", "`n") + "`n"
+    # Join lines with Linux line endings and ensure final newline
+    $config = $configLines -join "`n"
+    $config += "`n"
     
     Write-Host "Generated config:"
     Write-Host "----------------------------------------"
@@ -149,7 +151,8 @@ backend $Backend
         [System.IO.File]::WriteAllText($tempFile, $config)
         if (Test-Path $tempFile) {
             Write-Host "Successfully wrote temp file. Content verification:"
-            Write-Host (Get-Content $tempFile -Raw)
+            $verifyContent = Get-Content $tempFile -Raw
+            Write-Host ($verifyContent -replace "`n", "[LF]")
         } else {
             Write-Host "Error: Temp file was not created!"
             return $false
@@ -187,7 +190,7 @@ backend $Backend
             Write-Host "Config file exists at: $ConfigPath"
             $finalContent = & sudo cat $ConfigPath 2>&1
             Write-Host "Final config content:"
-            Write-Host $finalContent
+            Write-Host ($finalContent -replace "`n", "[LF]")
             Write-Host "Successfully updated HAProxy config"
             return $true
         } else {
@@ -209,9 +212,29 @@ function Test-HaproxyConfig {
     
     try {
         Write-Host "Testing HAProxy config at: $ConfigPath"
+        # First verify the file exists and has content
+        if (-not (Test-Path $ConfigPath)) {
+            Write-Host "Config file not found at: $ConfigPath"
+            return $false
+        }
+
+        $fileContent = & sudo cat $ConfigPath 2>&1
+        if (-not $fileContent) {
+            Write-Host "Config file is empty"
+            return $false
+        }
+
+        Write-Host "Config file content verification:"
+        $lastChar = $fileContent[-1]
+        Write-Host "Last character ASCII value: $([int][char]$lastChar)"
+        Write-Host "File ends with newline: $($fileContent.EndsWith("`n"))"
+
+        # Now test the configuration
+        Write-Host "Running HAProxy config test..."
         $result = & sudo haproxy -c -f $ConfigPath 2>&1
         Write-Host "Test result exit code: $LASTEXITCODE"
-        Write-Host "Test output: $result"
+        Write-Host "Full test output:"
+        $result | ForEach-Object { Write-Host "  $_" }
         
         if ($LASTEXITCODE -ne 0) {
             # Extract meaningful error message from HAProxy output
@@ -222,8 +245,13 @@ function Test-HaproxyConfig {
             if ($errorMessage) {
                 Write-Error "HAProxy configuration error: $($errorMessage -join '; ')"
             }
+            else {
+                Write-Error "HAProxy configuration test failed with no specific error message"
+            }
             return $false
         }
+        
+        Write-Host "Configuration test passed successfully"
         return $true
     }
     catch {
