@@ -83,14 +83,8 @@ function Set-HaproxyConfig {
     foreach ($server in $BackendServers) {
         Write-Host "  • $server"
     }
+    Write-Host "Config Path     : $ConfigPath"
     Write-Host "============================================"
-    
-    Write-Host "Creating new HAProxy config with:"
-    Write-Host "Frontend: $Frontend"
-    Write-Host "Backend: $Backend"
-    Write-Host "Mode: $Mode"
-    Write-Host "Port: $Port"
-    Write-Host "Servers: $($BackendServers -join ', ')"
     
     $config = @"
 global
@@ -130,12 +124,23 @@ backend $Backend
     # Ensure Linux line endings
     $config = $config.Replace("`r`n", "`n")
     
+    Write-Host "Generated config:"
+    Write-Host "----------------------------------------"
+    Write-Host $config
+    Write-Host "----------------------------------------"
+    
     # Write to a temporary file first
     $tempFile = "/tmp/haproxy.cfg.tmp"
     Write-Host "Writing config to temp file: $tempFile"
     try {
         [System.IO.File]::WriteAllText($tempFile, $config)
-        Write-Host "Successfully wrote temp file"
+        if (Test-Path $tempFile) {
+            Write-Host "Successfully wrote temp file. Content verification:"
+            Write-Host (Get-Content $tempFile -Raw)
+        } else {
+            Write-Host "Error: Temp file was not created!"
+            return $false
+        }
     }
     catch {
         Write-Host "Failed to write temp file: $($_.Exception.Message)"
@@ -145,16 +150,40 @@ backend $Backend
     # Use sudo to move the file to its final location with proper permissions
     try {
         Write-Host "Moving temp file to: $ConfigPath"
-        & sudo mv $tempFile $ConfigPath
+        $moveResult = & sudo mv $tempFile $ConfigPath 2>&1
+        Write-Host "Move command result: $moveResult"
+        Write-Host "Move command exit code: $LASTEXITCODE"
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Failed to move config file!"
+            return $false
+        }
+
         Write-Host "Setting ownership to haproxy:haproxy"
-        & sudo chown haproxy:haproxy $ConfigPath
+        $chownResult = & sudo chown haproxy:haproxy $ConfigPath 2>&1
+        Write-Host "Chown command result: $chownResult"
+        Write-Host "Chown command exit code: $LASTEXITCODE"
+
         Write-Host "Setting permissions to 644"
-        & sudo chmod 644 $ConfigPath
-        Write-Host "Successfully updated HAProxy config"
-        return $true
+        $chmodResult = & sudo chmod 644 $ConfigPath 2>&1
+        Write-Host "Chmod command result: $chmodResult"
+        Write-Host "Chmod command exit code: $LASTEXITCODE"
+
+        Write-Host "Verifying final config file:"
+        if (Test-Path $ConfigPath) {
+            Write-Host "Config file exists at: $ConfigPath"
+            $finalContent = & sudo cat $ConfigPath 2>&1
+            Write-Host "Final config content:"
+            Write-Host $finalContent
+            Write-Host "Successfully updated HAProxy config"
+            return $true
+        } else {
+            Write-Host "Error: Final config file does not exist!"
+            return $false
+        }
     }
     catch {
-        Write-Host "Failed to set permissions: $($_.Exception.Message)"
+        Write-Host "Failed during file operations: $($_.Exception.Message)"
         Write-Error "Failed to set HAProxy configuration: $_"
         return $false
     }
