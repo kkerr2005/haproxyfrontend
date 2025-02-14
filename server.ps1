@@ -24,6 +24,24 @@ Write-Host "Starting HAProxy Web Frontend"
 Write-Host "Loading from: $HaproxyUtilsPath"
 
 Start-PodeServer {
+    # Handle sudo authentication at startup
+    try {
+        Write-Host "Checking sudo permissions..."
+        $sudoTest = & sudo -n true 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Requesting sudo permissions for HAProxy management..."
+            $sudoAuth = & sudo true 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to get sudo permissions"
+            }
+        }
+        Write-Host "Sudo permissions verified"
+    }
+    catch {
+        Write-Host "Error getting sudo permissions: $($_.Exception.Message)"
+        throw "Failed to get required sudo permissions. Error: $($_.Exception.Message)"
+    }
+
     # Import required modules
     Import-Module $HaproxyUtilsPath -Force
     
@@ -67,19 +85,22 @@ Start-PodeServer {
             $config = Get-HaproxyConfig -Simple "/etc/haproxy/haproxy.cfg"
             Write-Host "Config retrieved"
             
-            # Convert the config to structured format
+            # Convert the config to structured format and add debug logging
+            Write-Host "Converting HAProxy config to structured format..."
             $structuredConfig = Convert-HAProxyConfig -FilePath "/etc/haproxy/haproxy.cfg"
+            Write-Host "Structured config content:"
+            Write-Host ($structuredConfig | ConvertTo-Json)
             
-            if ($null -eq $structuredConfig -or 
-                $null -eq $structuredConfig.global -or 
-                $null -eq $structuredConfig.defaults -or 
-                $null -eq $structuredConfig.frontends -or 
-                $null -eq $structuredConfig.backends) {
-                throw "Failed to parse HAProxy configuration. The configuration structure is invalid or empty."
+            Write-Host "Checking config sections..."
+            Write-Host "Global count: $($structuredConfig.global.Count)"
+            Write-Host "Defaults count: $($structuredConfig.defaults.Count)"
+            Write-Host "Frontends count: $($structuredConfig.frontends.Count)"
+            Write-Host "Backends count: $($structuredConfig.backends.Count)"
+            
+            if ($null -eq $structuredConfig) {
+                throw "Structured config is null"
             }
-write-host "Here is the config"
-            $structuredConfig.GetEnumerator() | out-string
-            
+
             Write-Host "Testing config"
             $configResult = Test-HaproxyConfig
             Write-Host "Config status: $configResult"
@@ -97,22 +118,62 @@ write-host "Here is the config"
                     New-PodeWebAlert -Type $(if ($isRunning) { 'Success' } else { 'Warning' }) -Value "HAProxy Service Status: $serviceStatus"
                 )
 
-                # Add structured configuration display
+                # Add structured configuration display with tables
                 New-PodeWebCard -Name 'HAProxy Configuration Details' -Content @(
-                    New-PodeWebText -Value 'Global Settings'
-                    New-PodeWebList -Items $structuredConfig.global
+                    if ($null -ne $structuredConfig.global -and $structuredConfig.global.Count -gt 0) {
+                        New-PodeWebContainer -Content @(
+                            New-PodeWebHeader -Size 4 -Value 'Global Settings'
+                            New-PodeWebTable -Name 'GlobalConfig' -Data @(
+                                foreach ($item in $structuredConfig.global) {
+                                    @{ 'Setting' = $item }
+                                }
+                            )
+                        )
+                    }
 
-                    New-PodeWebText -Value 'Default Settings'
-                    New-PodeWebList -Items $structuredConfig.defaults
+                    if ($null -ne $structuredConfig.defaults -and $structuredConfig.defaults.Count -gt 0) {
+                        New-PodeWebContainer -Content @(
+                            New-PodeWebHeader -Size 4 -Value 'Default Settings'
+                            New-PodeWebTable -Name 'DefaultConfig' -Data @(
+                                foreach ($item in $structuredConfig.defaults) {
+                                    @{ 'Setting' = $item }
+                                }
+                            )
+                        )
+                    }
 
                     foreach ($frontend in $structuredConfig.frontends.Keys) {
-                        New-PodeWebText -Value "Frontend: $frontend"
-                        New-PodeWebList -Items $structuredConfig.frontends[$frontend]
+                        if ($null -ne $structuredConfig.frontends[$frontend] -and $structuredConfig.frontends[$frontend].Count -gt 0) {
+                            New-PodeWebContainer -Content @(
+                                New-PodeWebHeader -Size 4 -Value "Frontend: $frontend"
+                                New-PodeWebTable -Name "Frontend_$frontend" -Data @(
+                                    foreach ($item in $structuredConfig.frontends[$frontend]) {
+                                        @{ 'Setting' = $item }
+                                    }
+                                )
+                            )
+                        }
                     }
 
                     foreach ($backend in $structuredConfig.backends.Keys) {
-                        New-PodeWebText -Value "Backend: $backend"
-                        New-PodeWebList -Items $structuredConfig.backends[$backend]
+                        if ($null -ne $structuredConfig.backends[$backend] -and $structuredConfig.backends[$backend].Count -gt 0) {
+                            New-PodeWebContainer -Content @(
+                                New-PodeWebHeader -Size 4 -Value "Backend: $backend"
+                                New-PodeWebTable -Name "Backend_$backend" -Data @(
+                                    foreach ($item in $structuredConfig.backends[$backend]) {
+                                        @{ 'Setting' = $item }
+                                    }
+                                )
+                            )
+                        }
+                    }
+
+                    # Fallback message if no configuration
+                    if (($null -eq $structuredConfig.global -or $structuredConfig.global.Count -eq 0) -and
+                        ($null -eq $structuredConfig.defaults -or $structuredConfig.defaults.Count -eq 0) -and
+                        ($null -eq $structuredConfig.frontends -or $structuredConfig.frontends.Count -eq 0) -and
+                        ($null -eq $structuredConfig.backends -or $structuredConfig.backends.Count -eq 0)) {
+                        New-PodeWebAlert -Type Warning -Value "No configuration sections found or all sections are empty"
                     }
                 )
 

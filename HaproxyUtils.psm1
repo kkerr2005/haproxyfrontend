@@ -5,60 +5,69 @@ function Get-HaproxyConfig {
     )
     try {
         Write-Host "Attempting to read HAProxy config from: $ConfigPath"
+        # Check if we can access the file
+        if (-not (Test-Path $ConfigPath)) {
+            Write-Host "Config file not found at: $ConfigPath"
+            return "No configuration found"
+        }
+
         # Use sudo to read the config file
-        $configLines = & sudo cat $ConfigPath 2>&1
-        Write-Host "Read command exit code: $LASTEXITCODE"
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Successfully read config file"
+        $configLines = $null
+        try {
+            $configLines = & sudo cat $ConfigPath 2>&1
+            Write-Host "Read command exit code: $LASTEXITCODE"
             
-            if ($Simple) {
-                $summary = "`n═══════════════════════════════════════`n"
-                $summary += "      HAProxy Active Configuration      `n"
-                $summary += "═══════════════════════════════════════`n`n"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Successfully read config file"
                 
-                $currentSection = $null
-                $currentMode = "http"
-                
-                foreach ($line in $configLines) {
-                    $line = $line.Trim()
+                if ($Simple) {
+                    $summary = "`n═══════════════════════════════════════`n"
+                    $summary += "      HAProxy Active Configuration      `n"
+                    $summary += "═══════════════════════════════════════`n`n"
                     
-                    # Get mode from defaults section
-                    if ($line -match '^\s*mode\s+(\S+)' -and $currentSection -eq "defaults") {
-                        $currentMode = $matches[1]
-                    }
-                    # Track current section
-                    elseif ($line -match '^(global|defaults|frontend|backend)\s*(\S*)') {
-                        $currentSection = $matches[1]
-                        if ($matches[2]) {
-                            if ($currentSection -eq "frontend") {
-                                $summary += "`n► FRONTEND: $($matches[2])`n"
-                                $summary += "   Mode: $currentMode`n"
-                            }
-                            elseif ($currentSection -eq "backend") {
-                                $summary += "`n► BACKEND: $($matches[2])`n"
+                    $currentSection = $null
+                    $currentMode = "http"
+                    
+                    foreach ($line in $configLines) {
+                        $line = $line.Trim()
+                        
+                        if ($line -match '^\s*mode\s+(\S+)' -and $currentSection -eq "defaults") {
+                            $currentMode = $matches[1]
+                        }
+                        elseif ($line -match '^(global|defaults|frontend|backend)\s*(\S*)') {
+                            $currentSection = $matches[1]
+                            if ($matches[2]) {
+                                if ($currentSection -eq "frontend") {
+                                    $summary += "`n► FRONTEND: $($matches[2])`n"
+                                    $summary += "   Mode: $currentMode`n"
+                                }
+                                elseif ($currentSection -eq "backend") {
+                                    $summary += "`n► BACKEND: $($matches[2])`n"
+                                }
                             }
                         }
+                        elseif ($line -match '^\s*bind\s+\*:(\d+)' -and $currentSection -eq "frontend") {
+                            $summary += "   Port: $($matches[1])`n"
+                        }
+                        elseif ($line -match '^\s*server\s+(\S+)\s+(\S+)' -and $currentSection -eq "backend") {
+                            $summary += "   • Server: $($matches[2])`n"
+                        }
                     }
-                    # Get port from bind directive
-                    elseif ($line -match '^\s*bind\s+\*:(\d+)' -and $currentSection -eq "frontend") {
-                        $summary += "   Port: $($matches[1])`n"
-                    }
-                    # Get backend servers
-                    elseif ($line -match '^\s*server\s+(\S+)\s+(\S+)' -and $currentSection -eq "backend") {
-                        $summary += "   • Server: $($matches[2])`n"
-                    }
+                    
+                    $summary += "`n═══════════════════════════════════════`n"
+                    return $summary
                 }
-                
-                $summary += "`n═══════════════════════════════════════`n"
-                return $summary
+                else {
+                    return ($configLines -join "`n")
+                }
             }
-            else {
-                return ($configLines -join "`n")
-            }
+            Write-Host "Failed to read config file: $configLines"
+            return "No configuration found"
         }
-        Write-Host "Failed to read config file: $configLines"
-        return "No configuration found"
+        catch {
+            Write-Host "Error reading config: $_"
+            return "Error reading configuration"
+        }
     }
     catch {
         Write-Host "Exception reading config: $($_.Exception.Message)"
@@ -329,31 +338,53 @@ function Convert-HAProxyConfig {
         backends = @{}
     }
 
-    $currentSection = ""
-    $currentName = ""
+    try {
+        Write-Host "Reading HAProxy config with sudo..."
+        $configContent = & sudo cat $FilePath 2>&1
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error reading config: $configContent"
+            throw "Failed to read HAProxy configuration file"
+        }
 
-    foreach ($line in Get-Content $FilePath) {
-        $trimmedLine = $line.Trim()
+        $currentSection = ""
+        $currentName = ""
 
-        # Identify new section headers
-        if ($trimmedLine -match "^(global|defaults|frontend|backend)\s+(\S*)?") {
-            $currentSection = $matches[1]
-            $currentName = $matches[2]
+        foreach ($line in $configContent) {
+            $trimmedLine = $line.Trim()
+            if ([string]::IsNullOrWhiteSpace($trimmedLine)) { continue }
 
-            if ($currentSection -eq "frontend") { $config.frontends[$currentName] = @() }
-            elseif ($currentSection -eq "backend") { $config.backends[$currentName] = @() }
-        } 
+            # Identify new section headers
+            if ($trimmedLine -match "^(global|defaults|frontend|backend)\s*(\S*)?") {
+                $currentSection = $matches[1]
+                $currentName = $matches[2]
 
-        # Store section details
-        if ($currentSection -eq "global" -or $currentSection -eq "defaults") {
-            $config[$currentSection] += $trimmedLine
-        } elseif ($currentSection -eq "frontend") {
-            $config.frontends[$currentName] += $trimmedLine
-        } elseif ($currentSection -eq "backend") {
-            $config.backends[$currentName] += $trimmedLine
+                if ($currentSection -eq "frontend") { $config.frontends[$currentName] = @() }
+                elseif ($currentSection -eq "backend") { $config.backends[$currentName] = @() }
+                
+                Write-Host "Processing section: $currentSection $currentName"
+            } 
+
+            # Store section details
+            if ($currentSection -eq "global" -or $currentSection -eq "defaults") {
+                $config[$currentSection] += $trimmedLine
+                Write-Host "Added to $currentSection : $trimmedLine"
+            } elseif ($currentSection -eq "frontend" -and $currentName) {
+                $config.frontends[$currentName] += $trimmedLine
+                Write-Host "Added to frontend '$currentName': $trimmedLine"
+            } elseif ($currentSection -eq "backend" -and $currentName) {
+                $config.backends[$currentName] += $trimmedLine
+                Write-Host "Added to backend '$currentName': $trimmedLine"
+            }
         }
     }
+    catch {
+        Write-Host "Error in Convert-HAProxyConfig: $($_.Exception.Message)"
+        Write-Host "Stack trace: $($_.ScriptStackTrace)"
+        throw
+    }
 
+    Write-Host "Configuration parsing completed"
     return $config
 }
 
