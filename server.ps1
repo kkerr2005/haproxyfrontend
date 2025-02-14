@@ -1,7 +1,6 @@
 Import-Module Pode -Force
 Import-Module Pode.Web -Force
 $HaproxyUtilsPath = "$PSScriptRoot/HaproxyUtils.psm1"
-. "$PSScriptRoot/haproxyconfig.ps1"  # Import the Convert-HAProxyConfig function
 
 # Helper function to show consistent alerts
 function Show-UserMessage {
@@ -25,6 +24,9 @@ Write-Host "Starting HAProxy Web Frontend"
 Write-Host "Loading from: $HaproxyUtilsPath"
 
 Start-PodeServer {
+    # Import required modules
+    Import-Module $HaproxyUtilsPath -Force
+    
     # Check HAProxy installation first
     try {
         $haproxyBinary = & sudo which haproxy 2>&1
@@ -67,6 +69,16 @@ Start-PodeServer {
             
             # Convert the config to structured format
             $structuredConfig = Convert-HAProxyConfig -FilePath "/etc/haproxy/haproxy.cfg"
+            
+            if ($null -eq $structuredConfig -or 
+                $null -eq $structuredConfig.global -or 
+                $null -eq $structuredConfig.defaults -or 
+                $null -eq $structuredConfig.frontends -or 
+                $null -eq $structuredConfig.backends) {
+                throw "Failed to parse HAProxy configuration. The configuration structure is invalid or empty."
+            }
+write-host "Here is the config"
+            $structuredConfig.GetEnumerator() | out-string
             
             Write-Host "Testing config"
             $configResult = Test-HaproxyConfig

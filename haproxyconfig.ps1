@@ -1,5 +1,10 @@
+# Module for HAProxy Configuration Management
+$ModulePath = $PSScriptRoot
+
 function Convert-HAProxyConfig {
+    [CmdletBinding()]
     param (
+        [Parameter(Mandatory=$true)]
         [string]$FilePath
     )
 
