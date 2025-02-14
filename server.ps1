@@ -1,6 +1,7 @@
 Import-Module Pode -Force
 Import-Module Pode.Web -Force
 $HaproxyUtilsPath = "$PSScriptRoot/HaproxyUtils.psm1"
+. "$PSScriptRoot/haproxyconfig.ps1"  # Import the Convert-HAProxyConfig function
 
 # Helper function to show consistent alerts
 function Show-UserMessage {
@@ -64,6 +65,9 @@ Start-PodeServer {
             $config = Get-HaproxyConfig -Simple "/etc/haproxy/haproxy.cfg"
             Write-Host "Config retrieved"
             
+            # Convert the config to structured format
+            $structuredConfig = Convert-HAProxyConfig -FilePath "/etc/haproxy/haproxy.cfg"
+            
             Write-Host "Testing config"
             $configResult = Test-HaproxyConfig
             Write-Host "Config status: $configResult"
@@ -80,6 +84,26 @@ Start-PodeServer {
                     New-PodeWebAlert -Type $(if ($configResult) { 'Success' } else { 'Error' }) -Value "HAProxy Configuration Status: $(if ($configResult) { 'Valid' } else { 'Invalid' })"
                     New-PodeWebAlert -Type $(if ($isRunning) { 'Success' } else { 'Warning' }) -Value "HAProxy Service Status: $serviceStatus"
                 )
+
+                # Add structured configuration display
+                New-PodeWebCard -Name 'HAProxy Configuration Details' -Content @(
+                    New-PodeWebText -Value 'Global Settings'
+                    New-PodeWebList -Items $structuredConfig.global
+
+                    New-PodeWebText -Value 'Default Settings'
+                    New-PodeWebList -Items $structuredConfig.defaults
+
+                    foreach ($frontend in $structuredConfig.frontends.Keys) {
+                        New-PodeWebText -Value "Frontend: $frontend"
+                        New-PodeWebList -Items $structuredConfig.frontends[$frontend]
+                    }
+
+                    foreach ($backend in $structuredConfig.backends.Keys) {
+                        New-PodeWebText -Value "Backend: $backend"
+                        New-PodeWebList -Items $structuredConfig.backends[$backend]
+                    }
+                )
+
                 New-PodeWebCard -Name 'Active Configuration' -Content @(
                     New-PodeWebForm -Name 'ConfigForm' -Content @(
                         New-PodeWebCard -Name 'Frontend Configuration' -Content @(
@@ -113,4 +137,3 @@ Start-PodeServer {
 
 }
 
-  
